@@ -1,0 +1,4 @@
+set,images,farm,lab
+train,5698,4633,1065
+validation,1006,816,190
+test,1363,1363,0

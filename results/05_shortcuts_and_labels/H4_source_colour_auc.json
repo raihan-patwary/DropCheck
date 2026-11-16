@@ -1,0 +1,9 @@
+{
+ "auc": 0.9224581453038937,
+ "auc_within_class": {
+  "Coccidiosis": 0.939,
+  "Healthy": 0.909,
+  "New Castle Disease": 0.893,
+  "Salmonella": 0.935
+ }
+}

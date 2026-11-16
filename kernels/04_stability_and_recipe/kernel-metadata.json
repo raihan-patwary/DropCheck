@@ -1,0 +1,18 @@
+{
+  "id": "mdraihanpatwary02/poultry-feces-04-stability-and-recipe",
+  "title": "poultry-feces-04-stability-and-recipe",
+  "code_file": "04_stability_and_recipe.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": false,
+  "enable_gpu": true,
+  "enable_tpu": false,
+  "enable_internet": true,
+  "dataset_sources": [
+    "allandclive/chicken-disease-1"
+  ],
+  "kernel_sources": [],
+  "competition_sources": [],
+  "model_sources": [],
+  "machine_shape": "NvidiaTeslaT4"
+}

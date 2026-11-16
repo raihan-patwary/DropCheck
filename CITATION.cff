@@ -1,0 +1,40 @@
+cff-version: 1.2.0
+message: "If you use this code or these results, please cite it as below, and cite the original paper and dataset."
+title: "DropCheck: re-testing deep learning poultry disease diagnosis from droppings photos"
+authors:
+  - family-names: Patwary
+    given-names: Md Raihan
+date-released: 2026-11-17
+license: MIT
+repository-code: "https://github.com/raihan-patwary/dropcheck"
+references:
+  - type: article
+    title: "Poultry diseases diagnostics models using deep learning"
+    authors:
+      - family-names: Machuve
+        given-names: Dina
+      - family-names: Nwankwo
+        given-names: Ezinne
+      - family-names: Mduma
+        given-names: Neema
+      - family-names: Mbelwa
+        given-names: Jimmy
+    journal: "Frontiers in Artificial Intelligence"
+    volume: 5
+    start: 733345
+    year: 2022
+    doi: "10.3389/frai.2022.733345"
+  - type: dataset
+    title: "Machine Learning Dataset for Poultry Diseases Diagnostics"
+    authors:
+      - family-names: Machuve
+        given-names: Dina
+    year: 2021
+    doi: "10.5281/zenodo.4628934"
+  - type: dataset
+    title: "Machine Learning Dataset for Poultry Diseases Diagnostics - PCR annotated"
+    authors:
+      - family-names: Machuve
+        given-names: Dina
+    year: 2021
+    doi: "10.5281/zenodo.5801834"

@@ -1,0 +1,5 @@
+test_set,metric,mean_diff_points,ci_lo,ci_hi,paired_t_p,folds_corrected_better
+farm,accuracy,0.66,-0.2,1.52,0.1015,4
+farm,balanced_accuracy,1.54,0.16,2.92,0.0363,5
+pcr,accuracy,-1.62,-4.19,0.95,0.1547,1
+pcr,balanced_accuracy,-1.69,-4.11,0.73,0.124,1

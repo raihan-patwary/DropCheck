@@ -1,0 +1,5 @@
+{
+ "test_images": 1363,
+ "test_with_identical_copy_in_train": 67,
+ "test_with_near_copy_in_train_or_val": 109
+}

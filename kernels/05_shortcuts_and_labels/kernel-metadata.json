@@ -1,0 +1,18 @@
+{
+  "id": "mdraihanpatwary02/poultry-feces-05-shortcuts-and-labels",
+  "title": "poultry-feces-05-shortcuts-and-labels",
+  "code_file": "05_shortcuts_and_labels.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": false,
+  "enable_gpu": true,
+  "enable_tpu": false,
+  "enable_internet": true,
+  "dataset_sources": [
+    "allandclive/chicken-disease-1"
+  ],
+  "kernel_sources": [],
+  "competition_sources": [],
+  "model_sources": [],
+  "machine_shape": "NvidiaTeslaT4"
+}

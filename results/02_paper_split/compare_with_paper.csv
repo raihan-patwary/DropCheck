@@ -1,0 +1,6 @@
+model,ours_stage1,paper_stage1,ours_stage2,paper_stage2,ours_stage3,paper_stage3
+BaselineCNN,93.69,83.06,,,,
+VGG16,83.42,85.85,86.79,94.65,86.57,95.01
+InceptionV3,95.16,94.79,95.6,94.94,96.92,95.45
+MobileNetV2,92.08,87.46,90.9,97.14,98.02,98.02
+Xception,93.69,88.27,96.63,97.36,97.8,98.24

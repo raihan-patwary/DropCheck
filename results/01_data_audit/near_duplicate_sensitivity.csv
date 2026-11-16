@@ -1,0 +1,7 @@
+max_hamming,images_with_a_near_copy,groups,largest_group,groups_with_conflicting_labels
+0,650,296,4,19
+2,676,299,15,19
+4,749,307,41,20
+6,902,315,107,24
+8,1130,313,247,27
+10,1516,321,813,41

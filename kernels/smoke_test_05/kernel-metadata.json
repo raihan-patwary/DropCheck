@@ -1,0 +1,18 @@
+{
+  "id": "mdraihanpatwary02/poultry-feces-smoke-test-05",
+  "title": "poultry-feces-smoke-test-05",
+  "code_file": "smoke_test_05.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_tpu": false,
+  "enable_internet": true,
+  "dataset_sources": [
+    "allandclive/chicken-disease-1"
+  ],
+  "kernel_sources": [],
+  "competition_sources": [],
+  "model_sources": [],
+  "machine_shape": "NvidiaTeslaT4"
+}

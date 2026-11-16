@@ -1,0 +1,13 @@
+# models, data and documents stay out of git
+*.keras
+*.h5
+*.zip
+*.docx
+*.pdf
+data/
+outputs/
+# python
+__pycache__/
+*.py[cod]
+.venv/
+.ipynb_checkpoints/
