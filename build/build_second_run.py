@@ -1,18 +1,18 @@
-"""Builds the second-run notebooks (04 and 05) and their smoke tests.
+"""Writes the second-run notebooks, 04 and 05, and their smoke tests.
 
-The first run (notebooks 02 and 03) answered "can the paper be repeated?". The second run asks why the numbers look
-the way they do. Every question is written down before the run, with the test that answers it:
+The first run (02, 03) showed the paper can be repeated. The second run asks why the numbers look the way they do.
+The questions were written down before the runs:
 
   04  H1  Is the accuracy stable over 5 duplicate-free folds, and does the paper's training recipe matter?
-          Each fold model is also scored on the lab (PCR) images of its test fold, which it never saw.
-  05  H2  Can the label be predicted from the floor alone, with the dropping masked out? (shortcut test)
-      H3  Can PCR labels be learned from photos as well as farm labels can, at the same sample size?
-      H4  Can a model tell a lab photo from a farm photo? (are the two sets taken differently?)
-      H5  How far does colour alone go? (a colour histogram plus logistic regression, no deep learning)
+          Each fold's model is also scored on the PCR images of its test fold, which it never saw.
+  05  H2  Can the label be predicted from the floor alone, with the dropping painted out?
+      H3  Can PCR labels be learned as well as field labels, at the same sample size?
+      H4  Can a model tell a PCR photo from a field photo?
+      H5  How far does colour alone get? (colour histogram + logistic regression, no deep learning)
 
-Both notebooks rebuild exactly the same folds from the same seed, so their results can be compared fold by fold.
+Both notebooks rebuild the same folds from the same seed, so they can be compared fold by fold.
 
-Usage:  python build_second_run.py
+Run:  python build_second_run.py
 """
 import os
 from nb_tools import make_notebook, write_metadata
@@ -22,18 +22,17 @@ ROOT = os.path.join(HERE, "..", "kernels")
 DATASET = "allandclive/chicken-disease-1"
 
 
-# ----------------------------------------------------------------------------------------------------------------
-# Cells shared by both notebooks
-# ----------------------------------------------------------------------------------------------------------------
+# cells used by both notebooks
+
 def settings_cell(smoke, nb):
     return ("code", f'''
-SMOKE = {smoke}         # True = tiny run that only checks the code
+SMOKE = {smoke}
 SEED = 42
 N_FOLDS = 2 if SMOKE else 5
 NEAR_DUP_MAX_HAMMING = 4   # same grouping rule as notebook 03
 
-# MobileNetV2 training, the paper's recommended model. Stage 1 trains only the new top; stage 3 unfreezes the
-# whole network but keeps the BatchNorm layers frozen (the paper's best setting, and the best in our first run).
+# MobileNetV2, the model the paper recommends. Stage 1 trains the new top only; stage 3 unfreezes the whole
+# network but keeps BatchNorm frozen, which was the best setting in the paper and in my first run.
 LR_HEAD, LR_FINE = 1e-3, 1e-5
 EPOCHS_HEAD = 1 if SMOKE else 20
 EPOCHS_FINE = 1 if SMOKE else 30
@@ -78,14 +77,14 @@ json.dump(versions, open(f"{OUT}/versions.json", "w"))
 DATA_MD = ("md", """
 ## Data, duplicate groups and folds
 
-This is the same preparation as notebook 03, so the clean set is identical:
+Same preparation as notebook 03, so the clean set is the same:
 
-1. Read the 8,067 images. A `pcr` prefix in the file name means the label came from the laboratory (PCR).
-2. Group images that are the same photo: identical files (same MD5) or nearly identical pictures
-   (dHash distance of 4 bits or less out of 64). A group is never split between training and testing.
+1. Read the 8,067 images. A `pcr` prefix in the file name means a laboratory (PCR) label.
+2. Group images that are the same photo: identical files (same MD5) or nearly identical pictures (dHash distance
+   of 4 bits or less out of 64). A group never sits on both sides of a split.
 3. Drop groups whose images carry different labels, and keep one copy of each identical file.
-4. Cut the clean set into 5 folds with `StratifiedGroupKFold` (seed 42). Each fold has about the same class mix,
-   and every group sits in one fold only. Each fold takes one turn as the test fold.
+4. Cut the clean set into 5 folds with `StratifiedGroupKFold` (seed 42): about the same class mix in each fold,
+   each group in one fold only. Every fold takes one turn as the test fold.
 """)
 
 DATA_CODE = ("code", '''
@@ -140,22 +139,22 @@ print(pd.crosstab([df.loc[keep, "source"], df.loc[keep, "label"]], df.loc[keep, 
 PIPE_MD = ("md", """
 ## Training recipes and the model
 
-Two recipes are compared. Everything else (model, layers, learning rates, epochs) stays the same.
+Two recipes, everything else (model, layers, learning rates, epochs) the same.
 
 | | Paper recipe | Corrected recipe |
 |---|---|---|
 | Pixel scaling | 0 to 1 (as in the paper) | -1 to 1 (what MobileNetV2's ImageNet weights expect) |
-| Brightness | multiply by 0.2 to 1.0 (training images are only ever darkened) | multiply by 0.8 to 1.2 (darker or brighter) |
+| Brightness | multiply by 0.2 to 1.0 (training images only ever get darker) | multiply by 0.8 to 1.2 (darker or brighter) |
 | Flips | vertical | vertical and horizontal |
 | Rotation | up to 45 degrees | up to 45 degrees |
 
-The model is MobileNetV2 with the paper's top: global average pooling, dropout 0.2 and a softmax layer.
-Training has two steps: the top alone (stage 1), then the whole network with BatchNorm frozen (stage 3).
-Validation data (about 1/7 of the training folds, also group-aware) decides when to stop and which epoch to keep.
-The test fold is never used for any choice.
+The model is MobileNetV2 with the paper's top: global average pooling, dropout 0.2, softmax. It trains in two
+steps, the top alone (stage 1) and then the whole network with BatchNorm frozen (stage 3). Validation data (about
+1/7 of the training folds, split by group as well) decides when to stop and which epoch to keep. The test fold is
+never used for any choice.
 
-`mask_centre=True` paints the middle of every image grey after augmentation, so that only a 16-pixel frame of floor is
-left. It is used by the shortcut test in notebook 05.
+`mask_centre=True` paints the middle of each image grey after augmentation and leaves a 16-pixel frame of floor.
+Notebook 05 uses it for the floor-only test.
 """)
 
 PIPE_CODE = ("code", '''
@@ -163,7 +162,7 @@ RECIPES = {
     "paper":     dict(scale="0_1",  flip="vertical",                rot=45, bright=(0.2, 1.0)),
     "corrected": dict(scale="-1_1", flip="horizontal_and_vertical", rot=45, bright=(0.8, 1.2)),
 }
-FRAME = 16   # border kept by the centre mask. 32 px was tried in the smoke test: droppings often reached into it
+FRAME = 16   # 32 px was tried first, but droppings often reached into a frame that wide
 ring = np.zeros((224, 224, 1), np.float32)
 ring[:FRAME], ring[-FRAME:], ring[:, :FRAME], ring[:, -FRAME:] = 1, 1, 1, 1
 RING = tf.constant(ring)
@@ -182,7 +181,7 @@ def make_ds(idx, recipe, train, mask_centre=False, labels=None, batch=BATCH, see
             f = tf.random.uniform([tf.shape(x)[0], 1, 1, 1], *r["bright"], seed=seed)
             x = tf.clip_by_value(x * f, 0.0, 255.0)
         if mask_centre:
-            x = x * RING + 127.5 * (1.0 - RING)       # grey out the centre, keep the frame
+            x = x * RING + 127.5 * (1.0 - RING)       # grey centre, frame untouched
         x = x / 255.0 if r["scale"] == "0_1" else x / 127.5 - 1.0
         return x, y
 
@@ -200,13 +199,13 @@ def build_model(n_classes=4):
     return keras.Model(inp, out), base
 
 def split_val(pool, seed):
-    """Group-aware validation split: about 1/7 of the training pool."""
+    """About 1/7 of the pool for validation, split by group."""
     cv = StratifiedGroupKFold(n_splits=7, shuffle=True, random_state=seed)
     tr, va = next(cv.split(pool, Y[pool], groups=GROUP[pool]))
     return pool[tr], pool[va]
 
 def train(train_idx, val_idx, recipe, seed, mask_centre=False, labels_of=None, n_classes=4, tag=""):
-    """Stage 1 (top only) then stage 3 (all layers, BatchNorm frozen). Returns the trained model."""
+    """Stage 1 (top only), then stage 3 (all layers, BatchNorm frozen)."""
     keras.utils.set_random_seed(seed)
     model, base = build_model(n_classes)
     lab = (lambda i: Y[i]) if labels_of is None else labels_of
@@ -235,7 +234,7 @@ def predict(model, idx, recipe, mask_centre=False):
     return model.predict(make_ds(idx, recipe, False, mask_centre, np.zeros(len(idx), np.int32)), verbose=0)
 
 def scores(y, p):
-    """The metrics we report for every test set."""
+    """Accuracy, balanced accuracy, macro F1 and recall per class."""
     pred = p.argmax(1)
     labels = list(range(p.shape[1]))
     rec = recall_score(y, pred, labels=labels, average=None, zero_division=0)
@@ -246,7 +245,7 @@ def scores(y, p):
     return out
 
 def mean_ci(values):
-    """Mean and 95% confidence interval over folds (t distribution, n-1 degrees of freedom)."""
+    """Mean and 95% CI over folds, t distribution with n-1 degrees of freedom."""
     v = np.asarray(values, float)
     if len(v) < 2:
         return v.mean(), np.nan, np.nan
@@ -255,33 +254,29 @@ def mean_ci(values):
 ''')
 
 
-# ----------------------------------------------------------------------------------------------------------------
-# Notebook 04
-# ----------------------------------------------------------------------------------------------------------------
 def cells_04(smoke):
     c = [("md", """
-# 04 · Second run, H1: is the accuracy stable, and does the paper's recipe matter?
+# Poultry Feces 04: Stability and Recipe
 
 **Paper:** Machuve et al. (2022), Frontiers in Artificial Intelligence 5: 733345. https://doi.org/10.3389/frai.2022.733345
 
-The first run gave one number per model from one split. One split can be lucky or unlucky.
-Here MobileNetV2 (the model the paper recommends for farmers' phones) is trained **5 times**, once per fold,
-with two training recipes. That gives 10 models and a mean with a confidence interval for each recipe.
+The first run gave one number per model from one split, and one split can be lucky or unlucky. Here MobileNetV2,
+the model the paper recommends for farmers' phones, is trained 5 times, once per fold, with two training recipes.
+That is 10 models, and a mean with a confidence interval for each recipe.
 
-**Questions, fixed before the run**
-* **H1a.** On farm photos, what is the mean accuracy over 5 duplicate-free folds, and how much does it vary?
-* **H1b.** Does the paper's recipe (0 to 1 pixel scaling, training images always darkened) cost accuracy compared
-  with a corrected recipe? Tested fold by fold (paired), because both recipes see exactly the same folds.
-* **H1c.** The models are trained on farm and lab photos mixed, like in the paper. How well do they score on the
-  **lab (PCR) photos of the test fold**, which they never saw? This is the paper's own training design,
-  scored against the laboratory instead of against the eye.
+**Questions (written down before the run)**
+* **H1a.** On field photos, what is the mean accuracy over 5 duplicate-free folds, and how much does it move?
+* **H1b.** Does the paper's recipe (pixels scaled 0 to 1, training images always darkened) cost accuracy against a
+  corrected recipe? Compared fold by fold, since both recipes see exactly the same folds.
+* **H1c.** The models train on field and PCR photos mixed, as in the paper. How do they score on the PCR photos of
+  the test fold, which they never saw? This is the paper's own design, scored against the laboratory.
 """), settings_cell(smoke, "04"), IMPORTS, DATA_MD, DATA_CODE, PIPE_MD, PIPE_CODE,
         ("md", """
 ## Run: 5 folds x 2 recipes
 
-For fold k: the test sets are the farm photos and the lab photos of fold k. Training uses all clean photos of the
-other folds, farm and lab mixed. Each model's predictions on its test fold are stored, so at the end every clean
-photo has exactly one out-of-fold prediction per recipe.
+For fold k the test sets are the field photos and the PCR photos of fold k. Training uses all clean photos of the
+other folds, both kinds mixed. Predictions on the test fold are kept, so at the end every clean photo has exactly
+one out-of-fold prediction per recipe.
 """),
         ("code", '''
 rows, oof = [], []
@@ -310,8 +305,8 @@ for k in range(N_FOLDS):
 ## Results
 
 * Mean and 95% confidence interval over the 5 folds, per recipe and test set.
-* Paired test of the two recipes: the difference corrected minus paper in each fold, its mean and 95% interval,
-  and a paired t-test. With 5 folds the test is weak, so the interval matters more than the p-value.
+* Recipes compared in pairs: corrected minus paper in each fold, the mean difference with its 95% interval, and a
+  paired t-test. Five folds make a weak test, so read the interval before the p-value.
 """),
         ("code", '''
 res = pd.DataFrame(rows)
@@ -344,7 +339,7 @@ paired.to_csv(f"{OUT}/paired_recipe_test.csv", index=False)
 print(paired.to_string(index=False))
 '''),
         ("code", '''
-# Out-of-fold confusion matrices: every clean photo predicted once, by the model that did not see it.
+# every clean photo predicted once, by the fold model that never saw it
 o = pd.concat(oof)
 fig, ax = plt.subplots(1, 2, figsize=(9, 4))
 for a, test_set, title in ((ax[0], "farm", "Farm labels"), (ax[1], "pcr", "PCR labels")):
@@ -363,32 +358,29 @@ plt.tight_layout(); plt.savefig(f"{OUT}/oof_confusion.png", dpi=150); plt.show()
     return c
 
 
-# ----------------------------------------------------------------------------------------------------------------
-# Notebook 05
-# ----------------------------------------------------------------------------------------------------------------
 def cells_05(smoke):
     c = [("md", """
-# 05 · Second run, H2 to H5: what do the labels and the models actually depend on?
+# Poultry Feces 05: Shortcuts and Labels
 
 **Paper:** Machuve et al. (2022), Frontiers in Artificial Intelligence 5: 733345. https://doi.org/10.3389/frai.2022.733345
 
-Notebook 03 showed that a model trained on farm labels agrees with the laboratory (PCR) only about 72% of the time.
-This notebook tests four explanations. Each has a fixed test and a fixed reading of the result.
+In notebook 03 a model trained on field labels agreed with the laboratory (PCR) only about 72% of the time.
+This notebook tests four explanations. Each one has its test and its reading fixed in advance.
 
 | | Question | Test | How to read it |
 |---|---|---|---|
 | **H2** | Does the floor give the label away? | Train and test on images whose centre is painted grey (only a 16-pixel frame of floor is left). | Far above chance means the scene, not the dropping, carries label information (a shortcut). |
-| **H3** | Can PCR labels be learned from photos as well as farm labels can? | 5-fold CV on lab photos only, and on an equal-sized farm sample with the same class counts. | If PCR is much lower, the disease is less visible than the farm labels suggest. |
-| **H4** | Were lab and farm photos taken differently? | Logistic regression on frozen ImageNet features predicts farm vs lab. | AUC near 0.5 means the sets look alike; near 1 means they differ, so a farm-trained model faces a new kind of photo. |
-| **H5** | How far does colour alone go? | A colour histogram plus logistic regression, no deep learning. | The farm labelling rules are colour and shape rules. If colour alone is close to the deep model on farm labels, the deep model is mostly learning those rules. |
+| **H3** | Can PCR labels be learned as well as field labels? | 5-fold CV on PCR photos only, and on a field sample of the same size and class counts. | If PCR is much lower, the disease shows less in the photo than the field labels suggest. |
+| **H4** | Were PCR and field photos taken differently? | Logistic regression on frozen ImageNet features predicts field vs PCR. | AUC near 0.5: the sets look alike. Near 1: they differ, and a model trained on one meets a new kind of photo in the other. |
+| **H5** | How far does colour alone get? | A colour histogram plus logistic regression, no deep learning. | The paper's field-labelling rules are colour and shape rules. If colour alone comes close to the deep model on field labels, the deep model is mostly learning those rules. |
 
 All tests use the same clean set and the same 5 folds as notebook 04.
 """), settings_cell(smoke, "05"), IMPORTS, DATA_MD, DATA_CODE, PIPE_MD, PIPE_CODE,
         ("md", """
-## H2 · Shortcut test: floor only
+## H2: floor only
 
-First we look at what the mask leaves. Droppings sometimes reach the edge of the photo, so a few frames still
-show part of a dropping. That can only push the floor-only score up, so treat it as an upper limit.
+First a look at what the mask leaves. Some droppings reach the edge of the photo, so a few frames still show a bit
+of dropping. That can only push the floor-only score up, so read it as an upper limit.
 """),
         ("code", '''
 show = np.random.RandomState(0).choice(keep, 12, replace=False)
@@ -412,18 +404,18 @@ for k in range(N_FOLDS):
     pd.DataFrame(rows).to_csv(f"{OUT}/scores.csv", index=False)
     del model; keras.backend.clear_session(); gc.collect()
 
-# Chance levels for comparison: always guessing the biggest class, and the balanced-accuracy chance of 25%.
+# for comparison: always guessing the biggest class, and 25% chance for balanced accuracy
 majority = pd.Series(Y[farm_keep]).value_counts(normalize=True).max()
 print(f"majority-class accuracy on farm photos: {majority:.4f}; balanced-accuracy chance: 0.25")
 '''),
         ("md", """
-## H3 · Are PCR labels learnable from photos?
+## H3: can PCR labels be learned from photos?
 
-* **PCR set:** the clean lab photos. Train on 4 folds, test on the fifth.
-* **Farm control:** a random sample of clean farm photos with **the same number of photos per class** as the PCR set,
-  drawn once (seed 42). Same folds, same training.
+* **PCR set:** the clean PCR photos. Train on 4 folds, test on the fifth.
+* **Field control:** a random sample of clean field photos with the same number per class as the PCR set, drawn once
+  (seed 42). Same folds, same training.
 
-The two sets differ only in who gave the label, so a large gap points to the labels, not to the amount of data.
+Size and class mix are matched, so a large gap would point at the labels, not at the amount of data.
 """),
         ("code", '''
 lab_keep = keep[df.loc[keep, "source"].values == "lab"]
@@ -449,13 +441,13 @@ for name, subset in (("H3_pcr_only", lab_keep), ("H3_farm_matched", farm_match))
         del model; keras.backend.clear_session(); gc.collect()
 '''),
         ("md", """
-## H4 and H5 · Feature-based tests (no fine-tuning)
+## H4 and H5: tests on fixed features, no fine-tuning
 
-* **Frozen features:** MobileNetV2 with its ImageNet weights, no training. Each photo becomes 1,280 numbers.
-* **Colour features:** a 3-D colour histogram in HSV space (8 hue x 4 saturation x 4 value bins = 128 numbers, each
-  photo's histogram sums to 1), plus the mean and spread of each RGB channel.
-* Both feed a logistic regression (standardised inputs, balanced class weights), scored with the same 5 folds.
-  The regression is fitted on the training folds only.
+* **Frozen features:** MobileNetV2 with its ImageNet weights and no training. Each photo becomes 1,280 numbers.
+* **Colour features:** a 3-D colour histogram in HSV (8 hue x 4 saturation x 4 value bins = 128 numbers, summing to 1
+  per photo), plus the mean and spread of each RGB channel.
+* Both go into a logistic regression (standardised inputs, balanced class weights), fitted on the training folds
+  only and scored on the same 5 folds.
 """),
         ("code", '''
 from sklearn.linear_model import LogisticRegression
@@ -465,7 +457,7 @@ from sklearn.preprocessing import StandardScaler
 extractor = keras.applications.MobileNetV2(include_top=False, weights="imagenet", pooling="avg", input_shape=(224, 224, 3))
 EMB = extractor.predict(tf.data.Dataset.from_tensor_slices(X[keep]).batch(128)
                         .map(lambda x: tf.cast(x, tf.float32) / 127.5 - 1.0), verbose=0).astype(np.float32)
-pos = {i: j for j, i in enumerate(keep)}            # row of each kept image in EMB
+pos = {i: j for j, i in enumerate(keep)}            # image index -> row in EMB
 
 def colour_features(arr):
     hsv = np.asarray(Image.fromarray(arr).convert("HSV"), dtype=np.float32) / 256.0
@@ -476,7 +468,7 @@ def colour_features(arr):
 COL = np.stack([colour_features(X[i]) for i in keep]).astype(np.float32)
 
 def cv_logreg(feats, idx, target, name):
-    """5-fold logistic regression on precomputed features; returns out-of-fold probabilities."""
+    """Logistic regression over the 5 folds; returns the out-of-fold probabilities."""
     F = feats[[pos[i] for i in idx]]
     oof = np.zeros((len(idx), len(np.unique(target))))
     for k in range(N_FOLDS):
@@ -490,7 +482,7 @@ def cv_logreg(feats, idx, target, name):
     pd.DataFrame(rows).to_csv(f"{OUT}/scores.csv", index=False)
     return oof
 
-# H4: farm (0) vs lab (1), from frozen deep features and from colour only.
+# H4: field (0) vs PCR (1), from deep features and from colour
 is_lab = (df.loc[keep, "source"].values == "lab").astype(int)
 for feats, name in ((EMB, "H4_source_deep"), (COL, "H4_source_colour")):
     p = cv_logreg(feats, keep, is_lab, name)
@@ -499,7 +491,7 @@ for feats, name in ((EMB, "H4_source_deep"), (COL, "H4_source_colour")):
     print(f"{name}: farm-vs-lab AUC {auc:.3f}; within each disease class {per_class}")
     json.dump({"auc": auc, "auc_within_class": per_class}, open(f"{OUT}/{name}_auc.json", "w"), indent=1)
 
-# H5: disease label from colour only, and from frozen deep features (a no-fine-tuning reference).
+# H5: the disease label from colour, and from frozen deep features as a no-fine-tuning reference
 for feats, fname in ((COL, "colour"), (EMB, "deep_frozen")):
     for src, idx in (("farm", farm_keep), ("pcr", lab_keep)):
         cv_logreg(feats, idx, Y[idx], f"H5_{fname}_{src}")
@@ -507,8 +499,8 @@ for feats, fname in ((COL, "colour"), (EMB, "deep_frozen")):
         ("md", """
 ## Summary table
 
-Mean and 95% confidence interval over the folds for every test. Reference numbers for reading them:
-chance balanced accuracy is 25%; full-image MobileNetV2 results are in notebook 04.
+Mean and 95% confidence interval over the folds for every test. Chance for balanced accuracy is 25%.
+The full-photo MobileNetV2 results are in notebook 04.
 """),
         ("code", '''
 res = pd.DataFrame(rows)
@@ -529,11 +521,11 @@ print(summary.to_string(index=False))
     return c
 
 
-for nb, smoke, folder, slug in [
-    ("04", False, "04_stability_and_recipe", "poultry-feces-04-stability-and-recipe"),
-    ("05", False, "05_shortcuts_and_labels", "poultry-feces-05-shortcuts-and-labels"),
-    ("04", True, "smoke_test_04", "poultry-feces-smoke-test-04"),
-    ("05", True, "smoke_test_05", "poultry-feces-smoke-test-05"),
+for nb, smoke, folder, slug, title in [
+    ("04", False, "04_stability_and_recipe", "poultry-feces-04-stability-and-recipe", "Poultry Feces 04: Stability and Recipe"),
+    ("05", False, "05_shortcuts_and_labels", "poultry-feces-05-shortcuts-and-labels", "Poultry Feces 05: Shortcuts and Labels"),
+    ("04", True, "smoke_test_04", "poultry-feces-smoke-test-04", "Poultry Feces Smoke Test 04"),
+    ("05", True, "smoke_test_05", "poultry-feces-smoke-test-05", "Poultry Feces Smoke Test 05"),
 ]:
     out = os.path.join(ROOT, folder)
     os.makedirs(out, exist_ok=True)
@@ -542,5 +534,5 @@ for nb, smoke, folder, slug in [
         cells = [("md", "# SMOKE TEST: tiny data, 1 epoch, 2 folds. Only checks that the code runs.")] + cells
     name = f"{folder}.ipynb"
     make_notebook(cells, os.path.join(out, name))
-    write_metadata(out, slug, slug, name, gpu=True, datasets=[DATASET], private=smoke)   # real runs are public
+    write_metadata(out, slug, title, name, gpu=True, datasets=[DATASET], private=smoke)
     print("built", folder)

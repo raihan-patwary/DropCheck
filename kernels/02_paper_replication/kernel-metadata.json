@@ -1,10 +1,10 @@
 {
   "id": "mdraihanpatwary02/poultry-feces-02-paper-replication",
-  "title": "poultry-feces-02-paper-replication",
+  "title": "Poultry Feces 02: Paper Replication",
   "code_file": "02_paper_replication.ipynb",
   "language": "python",
   "kernel_type": "notebook",
-  "is_private": true,
+  "is_private": false,
   "enable_gpu": true,
   "enable_tpu": false,
   "enable_internet": true,

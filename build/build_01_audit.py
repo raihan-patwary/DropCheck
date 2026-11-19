@@ -1,4 +1,4 @@
-"""Builds notebook 01: data audit (CPU only, about 5 minutes on Kaggle)."""
+"""Writes notebook 01, the data audit. CPU only, about 5 minutes on Kaggle."""
 import os
 from nb_tools import make_notebook, write_metadata
 
@@ -8,67 +8,61 @@ os.makedirs(OUT, exist_ok=True)
 
 cells = [
 ("md", """
-# 01 · Data audit: poultry droppings images (Machuve et al. 2022)
+# Poultry Feces 01: Data Audit
 
 **Paper:** Machuve D, Nwankwo E, Mduma N, Mbelwa J (2022). *Poultry diseases diagnostics models using deep learning.*
 Frontiers in Artificial Intelligence 5: 733345. https://doi.org/10.3389/frai.2022.733345
 
-**What the paper did, in short.** The authors photographed chicken droppings on farms in Tanzania with phones.
-They labelled each image as one of four classes: Coccidiosis, Healthy, Newcastle disease (NCD) or Salmonella.
-1,255 images were labelled by a laboratory test (PCR). 6,812 images were labelled by a vet or field officer by eye.
-Then they trained five image models. Their best model, Xception, reached 98.24% test accuracy.
+The authors photographed chicken droppings in Tanzania with phones and sorted each image into one of four classes:
+Coccidiosis, Healthy, Newcastle disease (NCD) or Salmonella. 1,255 images carry a laboratory (PCR) label. The other
+6,812 carry what I call field labels. The paper says a vet or field officer gave them. The authors' Zenodo record
+says the Salmonella and NCD photos came from birds that were infected on purpose, and the other two classes from farms.
+Their best model, Xception, reached 98.24% test accuracy.
 
-**What this notebook does.** Before we train anything, we check the data itself:
+Before training anything I want to know what is in the data:
+
 1. Do the image counts match Table 1 of the paper?
-2. Are there **duplicate images**? If one copy goes into training and the other copy into the test set,
-   the model has already seen the test image. The test score then looks better than it really is.
-   This problem is called **data leakage**.
-3. Are there duplicates that carry **two different disease labels**? That would be a labelling error.
+2. Are there duplicate images? If one copy lands in training and the other in the test set, the model has already
+   seen the test image and the score looks better than it is (data leakage).
+3. Do any duplicates carry two different labels? That would be a labelling error.
 
-Nothing here needs a GPU.
+No GPU needed.
 """),
 ("code", """
-# --- Imports -------------------------------------------------------------
-# os/glob: find files.  hashlib: make a fingerprint (MD5) of each file.
-# numpy/pandas: numbers and tables.  PIL: open images.  matplotlib: plots.
 import os, glob, hashlib
 import numpy as np
 import pandas as pd
 from PIL import Image
 import matplotlib.pyplot as plt
 
-OUT = "/kaggle/working/audit"          # everything we save goes here
+OUT = "/kaggle/working/audit"
 os.makedirs(OUT, exist_ok=True)
 
-# Kaggle mounts the dataset under /kaggle/input. The exact sub-folder can change,
-# so we search for the label file instead of typing a fixed path.
+# The mount point under /kaggle/input has changed between Kaggle versions, so search for the label file.
 csv_path = glob.glob("/kaggle/input/**/train_data.csv", recursive=True)[0]
 IMG_DIR = os.path.join(os.path.dirname(csv_path), "Train")
 print("label file :", csv_path)
 print("image folder:", IMG_DIR)
 """),
 ("md", """
-## 1. Image counts compared with Table 1 of the paper
+## 1. Image counts against Table 1
 
-File names tell us two things. The prefix `pcr` means the image was labelled by the **laboratory (PCR)**.
-No prefix means it was labelled **on the farm** by eye. Example: `pcrsalmo.12.jpg` is a lab-confirmed Salmonella image.
+The file name says where the label came from. A `pcr` prefix means the laboratory; no prefix means a field label.
+For example, `pcrsalmo.12.jpg` is a PCR-confirmed Salmonella image.
 """),
 ("code", """
-df = pd.read_csv(csv_path)                     # two columns: images (file name), label (class)
+df = pd.read_csv(csv_path)                     # columns: images (file name), label (class)
 df.columns = ["file", "label"]
 
-# Source of the label: 'lab' if the file name starts with 'pcr', otherwise 'farm'.
 df["source"] = np.where(df["file"].str.startswith("pcr"), "lab", "farm")
+df["code"] = df["file"].str.replace("pcr", "", regex=False).str.split(".").str[0]   # cocci / healthy / ncd / salmo
 
-# Short class code taken from the file name (cocci / healthy / ncd / salmo).
-df["code"] = df["file"].str.replace("pcr", "", regex=False).str.split(".").str[0]
-
-# Check that the label column and the file-name code always agree.
+# the label column and the class in the file name should always agree
 agree = pd.crosstab(df["code"], df["label"])
 print(agree, "\\n")
 
 counts = pd.crosstab(df["label"], df["source"], margins=True, margins_name="Total")
-# Values copied from Table 1 of the paper (lab, farm).
+# Table 1 of the paper (lab, farm)
 paper = pd.DataFrame({"lab_paper": [373, 347, 186, 349], "farm_paper": [2103, 2057, 376, 2276]},
                      index=["Coccidiosis", "Healthy", "New Castle Disease", "Salmonella"])
 table1 = counts.join(paper)
@@ -78,7 +72,7 @@ table1.to_csv(f"{OUT}/table1_check.csv")
 ("md", """
 ## 2. Image size
 
-The Kaggle copy of the dataset was resized to 224 × 224 pixels by the uploader. We check a sample of images.
+The uploader resized the Kaggle copy to 224 x 224 pixels. A sample of 500 is enough to confirm it.
 """),
 ("code", """
 sizes = pd.Series([Image.open(os.path.join(IMG_DIR, f)).size for f in df["file"].sample(500, random_state=0)])
@@ -87,8 +81,7 @@ print(sizes.value_counts())
 ("md", """
 ## 3. Exact duplicates
 
-We compute an **MD5 hash** for every file. A hash is a short fingerprint of the file bytes.
-Two files with the same MD5 are byte-for-byte identical copies.
+An MD5 hash is a short fingerprint of a file's bytes. Two files with the same MD5 are identical copies.
 """),
 ("code", """
 def md5_of(path):
@@ -100,45 +93,43 @@ df["md5"] = [md5_of(os.path.join(IMG_DIR, f)) for f in df["file"]]
 group_size = df.groupby("md5")["file"].transform("size")
 dups = df[group_size > 1].sort_values("md5")
 n_groups = dups["md5"].nunique()
-n_extra = len(dups) - n_groups                       # copies beyond the first one
+n_extra = len(dups) - n_groups                       # copies beyond the first
 print(f"duplicate groups: {n_groups}, extra copies: {n_extra} ({100*n_extra/len(df):.1f}% of all images)")
 
-# Which classes / sources do the duplicates come from?
 print(dups.groupby(["source", "label"]).size())
 
-# Duplicates that carry more than one label = contradictory labels.
+# the same file under two labels
 conflict = dups.groupby("md5")["label"].nunique()
 conflict_md5 = conflict[conflict > 1].index
 print("\\nidentical images with DIFFERENT labels:")
 print(dups[dups["md5"].isin(conflict_md5)][["file", "label", "source"]])
 """),
 ("md", """
-## 4. Near-duplicates (same photo, slightly changed)
+## 4. Near-duplicates
 
-Exact MD5 misses copies that were re-saved, slightly cropped or re-compressed.
-We use a **difference hash (dHash)**:
-1. shrink the image to 9 × 8 pixels in grey;
-2. for each row, compare each pixel with its right neighbour (brighter = 1, darker = 0);
-3. this gives 64 bits (a 64-digit binary code).
+MD5 misses a photo that was re-saved, cropped a little or compressed again. For those I use a difference hash (dHash):
 
-Two images whose codes differ in only a few bits (small **Hamming distance**) look almost the same.
-We count near-duplicate pairs at several distance limits, so we can see how sensitive the result is.
+1. shrink the image to 9 x 8 grey pixels;
+2. in each row, compare every pixel with its right neighbour (brighter = 1, darker = 0);
+3. that gives a 64-bit code.
+
+Two pictures whose codes differ in only a few bits (a small Hamming distance) look almost the same. I count the
+pairs at several limits to see how much the answer depends on the limit.
 """),
 ("code", """
 def dhash_bits(path, size=8):
     img = Image.open(path).convert("L").resize((size + 1, size), Image.LANCZOS)
     a = np.asarray(img, dtype=np.int16)
-    return (a[:, 1:] > a[:, :-1]).flatten()          # 64 True/False values
+    return (a[:, 1:] > a[:, :-1]).flatten()
 
-bits = np.stack([dhash_bits(os.path.join(IMG_DIR, f)) for f in df["file"]])   # shape (N, 64)
+bits = np.stack([dhash_bits(os.path.join(IMG_DIR, f)) for f in df["file"]])   # (N, 64)
 B = bits.astype(np.uint8)
 
-# Hamming distance between every pair of images, computed with matrix algebra:
-# distance = (bits that are 1 in a and 0 in b) + (bits that are 0 in a and 1 in b).
-# float32 lets numpy use its fast matrix routines; we round back to whole numbers after.
+# Hamming distance for every pair in one go: bits that are 1 in a and 0 in b, plus the other way round.
+# float32 so numpy can use its fast matrix product; rounded back to integers afterwards.
 Bf = B.astype(np.float32)
-ham = np.rint(Bf @ (1 - Bf).T + (1 - Bf) @ Bf.T).astype(np.int16)   # (N, N) matrix
-np.fill_diagonal(ham, 99)                            # ignore each image vs itself
+ham = np.rint(Bf @ (1 - Bf).T + (1 - Bf) @ Bf.T).astype(np.int16)
+np.fill_diagonal(ham, 99)
 print("matrix shape:", ham.shape)
 """),
 ("code", """
@@ -163,9 +154,9 @@ print(near.to_string(index=False))
 near.to_csv(f"{OUT}/near_duplicate_sensitivity.csv", index=False)
 """),
 ("md", """
-## 5. Look at the duplicates
+## 5. Looking at the pairs
 
-Numbers are not enough. We plot some near-duplicate pairs to see whether they are really the same photo.
+The counts only mean something if the pairs really are the same photo, so here are some to check by eye.
 """),
 ("code", """
 def show_pairs(t, n=8, fname=None):
@@ -188,7 +179,7 @@ show_pairs(4, fname="pairs_h4.png")
 show_pairs(8, fname="pairs_h8.png")
 """),
 ("md", """
-## 6. Example images of each class
+## 6. A few images of each class
 """),
 ("code", """
 fig, ax = plt.subplots(4, 6, figsize=(12, 8.5))
@@ -201,7 +192,7 @@ for r, lab in enumerate(sorted(df["label"].unique())):
 plt.tight_layout(); plt.savefig(f"{OUT}/class_examples.png", dpi=120); plt.show()
 """),
 ("code", """
-# Save the per-image table (file, label, source, md5, dHash as hex) for the training notebooks.
+# one row per image (file, label, source, md5, dHash in hex), used later by the figures
 df["dhash"] = [hex(int("".join(map(str, b)), 2)) for b in B]
 df.to_csv(f"{OUT}/image_table.csv", index=False)
 print(df.head())
@@ -209,6 +200,6 @@ print(df.head())
 ]
 
 make_notebook(cells, os.path.join(OUT, "01_data_audit.ipynb"))
-write_metadata(OUT, "poultry-feces-01-data-audit", "poultry-feces-01-data-audit",
+write_metadata(OUT, "poultry-feces-01-data-audit", "Poultry Feces 01: Data Audit",
                "01_data_audit.ipynb", gpu=False, datasets=["allandclive/chicken-disease-1"], private=False)
 print("built", OUT)

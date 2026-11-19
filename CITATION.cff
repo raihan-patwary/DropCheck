@@ -6,7 +6,7 @@ authors:
     given-names: Md Raihan
 date-released: 2026-11-17
 license: MIT
-repository-code: "https://github.com/raihan-patwary/dropcheck"
+repository-code: "https://github.com/raihan-patwary/DropCheck"
 references:
   - type: article
     title: "Poultry diseases diagnostics models using deep learning"

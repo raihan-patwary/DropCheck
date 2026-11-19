@@ -1,10 +1,10 @@
 {
   "id": "mdraihanpatwary02/poultry-feces-03-leak-free",
-  "title": "poultry-feces-03-leak-free",
+  "title": "Poultry Feces 03: Leak-Free",
   "code_file": "03_leak_free.ipynb",
   "language": "python",
   "kernel_type": "notebook",
-  "is_private": true,
+  "is_private": false,
   "enable_gpu": true,
   "enable_tpu": false,
   "enable_internet": true,

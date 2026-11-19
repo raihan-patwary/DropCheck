@@ -1,12 +1,10 @@
-"""Builds the GPU training notebooks.
+"""Writes the GPU training notebooks from one template.
 
-One template, three notebooks:
-  02_paper_replication : split the data the way the paper did (random 80/20, duplicates allowed)
-  03_leak_free         : remove duplicates first, keep near-copies on one side of the split,
-                         plus an extra test: train on farm (eye) labels, test on lab (PCR) labels
-  smoke_test           : tiny run (few images, 1 epoch) to check the code before the long runs
+    02_paper_replication   the paper's split: random 80/20, duplicates left in
+    03_leak_free           copies kept on one side of the split, plus Part C (train on field labels, test on PCR)
+    smoke_test             a few images and 1 epoch, to catch bugs before the long runs
 
-Usage:  python build_02_train.py
+Run:  python build_02_train.py
 """
 import os
 from nb_tools import make_notebook, write_metadata
@@ -15,92 +13,90 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.join(HERE, "..", "kernels")
 DATASET = "allandclive/chicken-disease-1"
 
-# Near-duplicate limit (Hamming distance on the 64-bit dHash), chosen from notebook 01.
-NEAR_DUP_MAX_HAMMING = 4
+NEAR_DUP_MAX_HAMMING = 4   # dHash limit, picked by eye from the pairs in notebook 01
 
 
 def cells_for(protocol, smoke):
     intro = {
         "paper": """
-# 02 · Replicating the paper: poultry disease from droppings images (GPU)
+# Poultry Feces 02: Paper Replication
 
 **Paper:** Machuve et al. (2022), *Poultry diseases diagnostics models using deep learning*,
 Frontiers in Artificial Intelligence 5: 733345. https://doi.org/10.3389/frai.2022.733345
 
-**Goal of this notebook.** Rebuild the paper's experiment as closely as the text allows, and check
-whether we get the same accuracies (their Table 2).
+Here I rebuild the paper's experiment as closely as its text allows, and check whether the accuracies in its
+Table 2 come out again.
 
-**What we copy from the paper (Section 3):**
+**Taken from the paper (Section 3)**
 * 8,067 images, 4 classes: Coccidiosis, Healthy, Newcastle disease (NCD), Salmonella.
-* Training data = farm-labelled + lab (PCR)-labelled images mixed. **Test data = farm-labelled images only.**
-* Split: 80% train / 20% test; then 15% of the training part is used for validation.
-* Five models: a small CNN built from scratch (baseline), VGG16, InceptionV3, MobileNetV2, Xception.
-* Three training stages for the four borrowed (pre-trained) models:
-  1. **Pre-training** – the borrowed network is frozen; only the new top layers learn.
-  2. **Fine-tuning** – part or all of the borrowed network is unfrozen and learns slowly.
-  3. **Fine-tuning with frozen BatchNorm** – same as 2, but the BatchNorm layers keep their ImageNet statistics.
-* Image size, pixel scaling, augmentation and top layers for each model, exactly as written in Sections 3.4–3.5.
+* Training data: field-labelled and PCR-labelled images mixed. Test data: field-labelled images only.
+* Split: 80% train, 20% test, then 15% of the training part for validation.
+* Five models: a small CNN trained from scratch (the baseline), VGG16, InceptionV3, MobileNetV2 and Xception.
+* Three stages for the four pre-trained networks:
+  1. *Pre-training*: the network is frozen and only the new top layers learn.
+  2. *Fine-tuning*: part or all of the network is unfrozen and learns slowly.
+  3. *Fine-tuning with frozen BatchNorm*: as 2, but the BatchNorm layers keep their ImageNet statistics.
+* Image size, pixel scaling, augmentation and top layers per model, as written in Sections 3.4 and 3.5.
 
-**What the paper does not tell us (in the main text), and what we chose.** The optimizer, learning rates and
-epochs are in their Supplementary Table 4, which we could not read. We use common Keras defaults:
-Adam optimizer, learning rate 0.001 for stage 1 and 0.00001 for stages 2–3, up to 30 epochs per stage,
-stop early if the validation loss does not improve for 8 epochs, keep the best epoch (judged on validation data only).
-The baseline CNN is trained for 100 epochs as the paper says.
+**Not in the main text, so chosen by me.** The optimizer, learning rates and epochs are in the paper's
+Supplementary Table 4, which I could not get. I used common Keras choices: Adam, learning rate 0.001 for stage 1
+and 0.00001 for stages 2 and 3, at most 30 epochs per stage, early stopping after 8 epochs without a better
+validation loss, keeping the best epoch. The baseline CNN gets 100 epochs, as in the paper.
 """,
         "leakfree": f"""
-# 03 · Leak-free re-test of the paper (GPU)
+# Poultry Feces 03: Leak-Free Re-Test
 
 **Paper:** Machuve et al. (2022), Frontiers in Artificial Intelligence 5: 733345. https://doi.org/10.3389/frai.2022.733345
 
-Notebook 01 found **duplicate images** in the dataset. In notebook 02 we split the data at random, like the paper.
-So some test images also sit in the training set (as a copy). The model may simply remember them.
+Notebook 01 found duplicate images. Notebook 02 split the data at random, like the paper, so some test images
+also sit in the training set as a copy, and the model may just remember them.
 
-**This notebook asks: what accuracy do the same models reach when no copy can cross the split?**
+**The question here: what do the same models score when no copy can cross the split?**
 
-What changes compared with notebook 02 (everything else is identical):
-1. Identical files (same MD5 fingerprint) are reduced to **one copy**.
-2. Images that are almost the same (dHash Hamming distance ≤ {NEAR_DUP_MAX_HAMMING} of 64 bits) are put in one **group**.
-   A whole group goes either to training or to testing, never to both.
-3. Groups where copies carry **different disease labels** are removed (we cannot know which label is right).
+Changes from notebook 02 (everything else is the same):
+1. Identical files (same MD5) are cut down to one copy.
+2. Images that are almost the same (dHash distance of {NEAR_DUP_MAX_HAMMING} bits or less out of 64) form a group.
+   A whole group goes to training or to testing, never to both.
+3. Groups whose copies carry different labels are dropped, because there is no way to tell which label is right.
 
-**Extra experiment (Part C): do farm labels agree with the laboratory?**
-Farm labels were given by eye (colour and shape of the dropping). Lab labels came from PCR, the real test.
-We train MobileNetV2 (the paper's recommended model) on **farm images only** and test it on the **PCR-labelled images**.
-If farm labels were as good as PCR, accuracy should stay high.
+**Part C: do field labels agree with the laboratory?**
+The field labels come from a vet's eye (the paper) or from where the photo was taken (the Zenodo record).
+The PCR labels come from a laboratory test for the pathogen. I train MobileNetV2, the model the paper recommends,
+on field-labelled images only and then score it against the PCR labels. If the two kinds of label agreed,
+the accuracy would stay high.
 """,
     }[protocol]
     if smoke:
-        intro = "# SMOKE TEST (few images, 1 epoch) – only checks that the code runs\n" + intro
+        intro = "# SMOKE TEST (few images, 1 epoch): only checks that the code runs\n" + intro
 
     cells = [("md", intro)]
 
     cells.append(("code", f'''
-# ============================== SETTINGS ==============================
-PROTOCOL = "{protocol}"     # "paper" = random split like the paper, "leakfree" = duplicates handled
-SMOKE = {smoke}              # True = tiny quick run to test the code
-SEED = 42                     # fixed random seed so the split and the training can be repeated
-NEAR_DUP_MAX_HAMMING = {NEAR_DUP_MAX_HAMMING}      # used only by the leak-free protocol
+# Settings
+PROTOCOL = "{protocol}"     # "paper" = random split like the paper, "leakfree" = copies kept apart
+SMOKE = {smoke}
+SEED = 42
+NEAR_DUP_MAX_HAMMING = {NEAR_DUP_MAX_HAMMING}      # only used by the leak-free protocol
 
-# Training choices that the paper's main text does not give (see the introduction).
-LR_HEAD = 1e-3                # learning rate, stage 1 (only the new top layers learn)
-LR_FINE = 1e-5                # learning rate, stages 2 and 3 (the borrowed network also learns)
+# not given in the paper's main text, see the introduction
+LR_HEAD = 1e-3                # stage 1, only the new top learns
+LR_FINE = 1e-5                # stages 2 and 3
 EPOCHS_STAGE = 1 if SMOKE else 30
-PATIENCE = 8                  # early stopping: wait this many epochs without improvement
+PATIENCE = 8
 EPOCHS_BASELINE = 1 if SMOKE else 100
-BATCH = 64                    # batch size given in the paper
-BATCH_XCEPTION_FINE = 32      # Xception fine-tuning at 299 px with batch 64 does not fit in the T4's 16 GB memory
+BATCH = 64                    # from the paper
+BATCH_XCEPTION_FINE = 32      # Xception at 299 px, fully unfrozen, does not fit in 16 GB at batch 64
 '''))
 
     cells.append(("md", """
 ## 1. Imports and GPU check
 
-* **TensorFlow / Keras**: the deep learning library the paper used.
-* **mixed precision**: the GPU does most maths in 16-bit numbers. This is about 2× faster on a T4 GPU
-  and does not change the accuracy in a meaningful way.
+TensorFlow/Keras, as in the paper. Mixed precision lets the T4 do most of the maths in 16-bit numbers, which is
+roughly twice as fast and makes no real difference to accuracy.
 """))
     cells.append(("code", '''
 import os
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"     # hide TensorFlow's C++ timing messages (Python errors still show)
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"     # quieter TensorFlow logs (Python errors still show)
 import gc, glob, json, time, hashlib, platform, traceback
 import numpy as np
 import pandas as pd
@@ -115,15 +111,15 @@ import tensorflow as tf
 import keras
 from keras import layers
 
-keras.utils.set_random_seed(SEED)                          # same seed for python, numpy and tensorflow
-keras.mixed_precision.set_global_policy("mixed_float16")   # faster training on the GPU
+keras.utils.set_random_seed(SEED)                          # python, numpy and tensorflow in one call
+keras.mixed_precision.set_global_policy("mixed_float16")
 
 OUT = f"/kaggle/working/results_{PROTOCOL}"
 os.makedirs(OUT, exist_ok=True)
 
 gpus = tf.config.list_physical_devices("GPU")
 for g in gpus:
-    tf.config.experimental.set_memory_growth(g, True)    # take GPU memory only when needed
+    tf.config.experimental.set_memory_growth(g, True)
 versions = {"python": platform.python_version(), "tensorflow": tf.__version__, "keras": keras.__version__,
             "gpu": str(gpus)}
 print(versions)
@@ -132,10 +128,10 @@ assert gpus or SMOKE, "No GPU found: switch the notebook accelerator to GPU."
 '''))
 
     cells.append(("md", """
-## 2. Load all images into memory
+## 2. Load the images
 
-There are 8,067 small images (224 × 224). Together they need about 1.2 GB of memory, so we load them once.
-The class list is fixed in alphabetical order; the model's output number 0, 1, 2, 3 means the class at that position.
+8,067 images of 224 x 224 pixels take about 1.2 GB, so they all go into memory once. The classes are sorted
+alphabetically, and the model's outputs 0 to 3 follow that order.
 """))
     cells.append(("code", '''
 csv_path = glob.glob("/kaggle/input/**/train_data.csv", recursive=True)[0]
@@ -143,12 +139,12 @@ IMG_DIR = os.path.join(os.path.dirname(csv_path), "Train")
 
 df = pd.read_csv(csv_path)
 df.columns = ["file", "label"]
-df["source"] = np.where(df["file"].str.startswith("pcr"), "lab", "farm")   # 'pcr' prefix = lab (PCR) label
-CLASSES = sorted(df["label"].unique())        # ['Coccidiosis', 'Healthy', 'New Castle Disease', 'Salmonella']
-SHORT = ["cocci", "healthy", "ncd", "salmo"]  # short names used in the paper's Table 2
+df["source"] = np.where(df["file"].str.startswith("pcr"), "lab", "farm")   # pcr prefix = PCR label
+CLASSES = sorted(df["label"].unique())        # Coccidiosis, Healthy, New Castle Disease, Salmonella
+SHORT = ["cocci", "healthy", "ncd", "salmo"]  # names used in the paper's Table 2
 df["y"] = df["label"].map({c: i for i, c in enumerate(CLASSES)})
 
-if SMOKE:   # keep 100 images per class/source mix for a quick test
+if SMOKE:   # 25 per class and source
     df = df.groupby(["label", "source"], group_keys=False).apply(lambda g: g.sample(min(len(g), 25), random_state=SEED))
     df = df.reset_index(drop=True)
 
@@ -159,20 +155,20 @@ def load(f):
     return np.asarray(img, dtype=np.uint8)
 
 t0 = time.time()
-X = np.stack([load(f) for f in df["file"]])     # shape (N, 224, 224, 3), whole numbers 0-255
+X = np.stack([load(f) for f in df["file"]])     # (N, 224, 224, 3), values 0-255
 Y = df["y"].values.astype(np.int32)
 print(X.shape, f"loaded in {time.time()-t0:.0f} s")
 print(pd.crosstab(df["label"], df["source"], margins=True))
 '''))
 
     cells.append(("md", """
-## 3. Fingerprints for duplicate checks
+## 3. Fingerprints
 
-We need these in both notebooks: in the leak-free one to build the groups, and in the paper one to **count how many
-test images have a copy in the training set**.
-* **MD5**: identical files.
-* **dHash**: a 64-bit code of the picture's light/dark pattern. Similar pictures have similar codes.
-  The **Hamming distance** = how many of the 64 bits differ.
+Both notebooks need these. The leak-free one builds its groups from them, and the paper one uses them to count how
+many test images have a copy in training.
+* **MD5** finds identical files.
+* **dHash** is a 64-bit code of the light and dark pattern in a picture. The Hamming distance is the number of bits
+  that differ between two codes; a small distance means the pictures look almost the same.
 """))
     cells.append(("code", '''
 df["md5"] = [hashlib.md5(open(os.path.join(IMG_DIR, f), "rb").read()).hexdigest() for f in df["file"]]
@@ -183,10 +179,10 @@ def dhash_bits(arr):
     return (a[:, 1:] > a[:, :-1]).flatten()
 
 Bf = np.stack([dhash_bits(x) for x in X]).astype(np.float32)
-HAM = np.rint(Bf @ (1 - Bf).T + (1 - Bf) @ Bf.T).astype(np.int16)    # Hamming distance for every pair
+HAM = np.rint(Bf @ (1 - Bf).T + (1 - Bf) @ Bf.T).astype(np.int16)    # distance for every pair
 np.fill_diagonal(HAM, 99)
 
-# Images linked by "same file" OR "Hamming distance <= limit" form one group (connected components of a graph).
+# same file OR close dHash -> linked; linked images form a group (connected components)
 same_md5 = (df["md5"].values[:, None] == df["md5"].values[None, :])
 np.fill_diagonal(same_md5, False)
 LINK = same_md5 | (HAM <= NEAR_DUP_MAX_HAMMING)
@@ -197,14 +193,14 @@ print("images:", len(df), "| groups:", n_groups, "| images that share a group:",
 
     if protocol == "paper":
         split_md = """
-## 4. Split the data the way the paper did
+## 4. Split the way the paper did
 
-1. Take the **farm-labelled** images and split them 80% / 20% at random, keeping class proportions (stratified).
-   The 20% part is the **test set** (the paper tested on farm images only).
-2. Add **all lab-labelled** images to the 80% part. This is the training pool.
-3. Take 15% of the training pool as the **validation set**. It is used only to stop training and pick the best epoch.
+1. Split the field-labelled images 80/20 at random, keeping the class mix (stratified). The 20% is the test set;
+   the paper tested on field images only.
+2. Add all PCR-labelled images to the 80%. That is the training pool.
+3. Take 15% of the pool for validation. It only decides when to stop and which epoch to keep.
 
-At the end we count how many test images have a copy (same group) in training. This is the leakage.
+At the end I count how many test images have a copy (same group) in training. That number is the leakage.
 """
         split_code = '''
 farm = df.index[df["source"] == "farm"].values
@@ -214,16 +210,16 @@ pool = np.concatenate([farm_train, lab])
 train_idx, val_idx = train_test_split(pool, test_size=0.15, stratify=Y[pool], random_state=SEED)
 '''
     else:
-        split_md = f"""
+        split_md = """
 ## 4. Leak-free split
 
-1. **Remove conflicting groups**: groups whose copies carry more than one label.
-2. **Keep one copy of identical files** (same MD5). Near-copies stay, but inside one group.
-3. **Group-aware split** with `StratifiedGroupKFold`: it cuts the data in 5 parts so that each group sits in exactly
-   one part, and each part has about the same class mix. Part 1 = test candidates (~20%).
-4. Test set = the **farm** images in that part (same rule as the paper). Lab images of that part are left out,
-   so that no copy of them can leak.
-5. The other 4 parts = training pool. Validation (~15%) is cut from it the same group-aware way.
+1. Drop groups whose copies carry more than one label.
+2. Keep one copy of each identical file. Near-copies stay, inside their group.
+3. `StratifiedGroupKFold` cuts the data into 5 parts so that each group sits in one part and each part has about
+   the same class mix. The first part (about 20%) holds the test candidates.
+4. The test set is the field images of that part, the same rule as the paper. Its PCR images are left out, so no
+   copy of them can leak.
+5. The other 4 parts are the training pool. Validation (about 14%) is cut from it in the same group-aware way.
 """
         split_code = '''
 n_lab_per_group = df.groupby("group")["label"].transform("nunique")
@@ -231,22 +227,22 @@ conflict = df.index[n_lab_per_group > 1].values
 print("images in groups with conflicting labels (removed):", len(conflict))
 print(df.loc[conflict, ["file", "label", "group"]].sort_values("group").to_string())
 
-keep = df.drop(index=conflict).drop_duplicates("md5").index.values       # one copy per identical file
+keep = df.drop(index=conflict).drop_duplicates("md5").index.values
 print("images kept:", len(keep), "of", len(df))
 
 sgkf = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=SEED)
 pool_pos, test_pos = next(sgkf.split(keep, Y[keep], groups=GROUP[keep]))
 test_part, pool = keep[test_pos], keep[pool_pos]
-test_idx = test_part[df.loc[test_part, "source"].values == "farm"]        # test = farm images only
+test_idx = test_part[df.loc[test_part, "source"].values == "farm"]
 
-sgkf_val = StratifiedGroupKFold(n_splits=7, shuffle=True, random_state=SEED)   # 1/7 = ~14% validation
+sgkf_val = StratifiedGroupKFold(n_splits=7, shuffle=True, random_state=SEED)   # 1 of 7 parts, ~14%
 tr_pos, va_pos = next(sgkf_val.split(pool, Y[pool], groups=GROUP[pool]))
 train_idx, val_idx = pool[tr_pos], pool[va_pos]
 '''
     cells.append(("md", split_md))
     cells.append(("code", split_code + '''
 def leak_count(a, b):
-    """How many images in set a have a copy (same group) in set b."""
+    """How many images in a have a copy (same group) in b."""
     return int(np.isin(GROUP[a], GROUP[b]).sum())
 
 split_info = pd.DataFrame({
@@ -268,30 +264,29 @@ json.dump(leak, open(f"{OUT}/leakage.json", "w"), indent=1)
 '''))
 
     cells.append(("md", """
-## 5. Model settings copied from the paper
+## 5. Model settings from the paper
 
-Each model got its own image size, pixel scaling and augmentation in the paper (Sections 3.4–3.5).
-**Augmentation** = random changes to training images (flip, rotate, shift, darken) so the model sees more variety.
-Test images are never augmented.
+Each model had its own image size, pixel scaling and augmentation (Sections 3.4 and 3.5). Augmentation means random
+changes to the training images (flips, turns, shifts, darkening) so the model sees more variety. Test images are
+never changed.
 
-Notes on details that matter:
-* `brightness (0.1, 0.7)`: in Keras' old `ImageDataGenerator`, this **multiplies** every pixel by a random number
-  between 0.1 and 0.7. So every training image becomes darker (10–70% of its brightness), while test images are not.
-  We copy this as written.
-* Pixel scaling: the paper used 0–1 for InceptionV3, MobileNetV2 and Xception, and −1 to 1 for VGG16.
-  (The ImageNet weights of these networks were originally trained with other scalings; we copy the paper anyway.)
-* Which layers are unfrozen in stage 2–3:
-  * VGG16: "the last two pre-trained layers" → `block5_conv3` and `block5_pool`.
-  * InceptionV3: everything after the layer `mixed8` (the top two Inception blocks; this matches the Keras guide).
+Details that matter:
+* `brightness (0.1, 0.7)`: in Keras' old `ImageDataGenerator` this multiplies every pixel by a random number between
+  0.1 and 0.7. Every training image gets darker (10 to 70% of its brightness) while test images do not. Copied as written.
+* Pixel scaling: 0 to 1 for InceptionV3, MobileNetV2 and Xception, -1 to 1 for VGG16, as in the paper, even though
+  the ImageNet weights were trained with other scalings.
+* Layers unfrozen in stages 2 and 3:
+  * VGG16: "the last two pre-trained layers", so `block5_conv3` and `block5_pool`.
+  * InceptionV3: everything after `mixed8`, the top two Inception blocks, which is also what the Keras guide does.
   * MobileNetV2: the whole network.
-  * Xception: "132 layers" – Keras' Xception has exactly 132 layers, so this is the whole network.
-* **Batch size**: 64 as in the paper, except Xception in stages 2–3, which uses 32. At 299 px with the whole network
-  unfrozen, batch 64 ran out of the T4 GPU's memory in our test run.
-* **VGG16 has no BatchNorm layers.** So for VGG16, stage 3 is the same as stage 2; any difference is random.
+  * Xception: "132 layers". Keras' Xception has exactly 132, so the whole network.
+* Batch size 64 as in the paper, except Xception in stages 2 and 3, which needs 32. At 299 px with everything
+  unfrozen, 64 ran out of memory on the T4 in the smoke test.
+* VGG16 has no BatchNorm layers, so for VGG16 stage 3 is the same as stage 2 and any difference is random.
 """))
     cells.append(("code", '''
 MODELS = {
-    #             input size, pixel scaling, augmentation settings
+    #              input size, pixel scaling, augmentation
     "BaselineCNN": dict(size=128, scale="0_1",  aug=dict(flip="horizontal_and_vertical", rot=90, shift_w=0.5, bright=(0.1, 0.7))),
     "VGG16":       dict(size=224, scale="-1_1", aug=dict(flip="horizontal_and_vertical", rot=90, shift_w=0.5, shift_h=0.5, bright=(0.1, 0.7))),
     "InceptionV3": dict(size=299, scale="0_1",  aug=dict(rot=40, shift_w=0.2, shift_h=0.2, shear=0.2, zoom=0.2)),
@@ -299,7 +294,7 @@ MODELS = {
     "Xception":    dict(size=299, scale="0_1",  aug=dict(flip="horizontal_and_vertical", bright=(0.1, 0.7))),
 }
 
-# Paper results (Table 2) to compare with ours: accuracy % for stages 1, 2, 3 and F1 {cocci, healthy, ncd, salmo}.
+# Table 2 of the paper: accuracy % for stages 1-3, and F1 for cocci, healthy, ncd, salmo
 PAPER = {
     "BaselineCNN": dict(acc=[83.06, None, None], f1=[0.92, 0.86, 0.14, 0.81]),
     "VGG16":       dict(acc=[85.85, 94.65, 95.01], f1=[0.98, 0.95, 0.77, 0.95]),
@@ -310,19 +305,19 @@ PAPER = {
 '''))
 
     cells.append(("md", """
-## 6. Data pipeline (tf.data)
+## 6. Input pipeline
 
-For each batch of images: resize to the model's size → random augmentation (training only) → scale the pixels.
-This runs on the GPU side in parallel with training, so the GPU does not wait.
+Each batch is resized to the model's size, augmented (training only) and scaled. tf.data runs this alongside
+training so the GPU is not left waiting.
 """))
     cells.append(("code", '''
 def make_augmenter(a):
-    """Build a chain of Keras random layers from the paper's settings.
-    dtype="float32": with mixed precision switched on, Keras layers would otherwise output 16-bit numbers."""
+    """Keras random layers for the paper's settings.
+    dtype="float32" because under mixed precision these layers would otherwise hand back float16."""
     steps = []
     if a.get("flip"):
         steps.append(layers.RandomFlip(a["flip"], dtype="float32"))
-    if a.get("rot"):     # Keras uses a fraction of a full turn: 90 degrees = 0.25
+    if a.get("rot"):     # Keras wants a fraction of a full turn: 90 degrees = 0.25
         steps.append(layers.RandomRotation(a["rot"] / 360, fill_mode="nearest", dtype="float32"))
     if a.get("shift_w") or a.get("shift_h"):
         steps.append(layers.RandomTranslation(a.get("shift_h", 0.0), a.get("shift_w", 0.0), fill_mode="nearest", dtype="float32"))
@@ -345,8 +340,8 @@ def make_ds(idx, cfg, train, batch=None):
         if size != 224:
             x = tf.image.resize(x, (size, size))
         for layer in aug:
-            x = tf.cast(layer(x, training=True), tf.float32)   # keep 32-bit numbers in the pipeline
-        if bright:                                       # ImageDataGenerator-style brightness: multiply
+            x = tf.cast(layer(x, training=True), tf.float32)
+        if bright:                                       # ImageDataGenerator brightness is a multiply
             f = tf.random.uniform([tf.shape(x)[0], 1, 1, 1], bright[0], bright[1])
             x = tf.clip_by_value(x * f, 0.0, 255.0)
         x = x / 255.0 if cfg["scale"] == "0_1" else x / 127.5 - 1.0
@@ -359,13 +354,13 @@ def make_ds(idx, cfg, train, batch=None):
 '''))
 
     cells.append(("md", """
-## 7. Building the models
+## 7. Models
 
-* **Baseline CNN** (Section 3.4): one convolution layer with 32 filters, then four blocks of
-  convolution → max pooling → dropout 0.2, then dense layers with softmax. The paper does not give the filter numbers
-  of the four blocks or the dense layer size; we use 32-64-128-128 filters and a 256-unit dense layer.
-* **Borrowed (pre-trained) networks**: the ImageNet version without its top, plus the new top layers from the paper.
-* The last layer always has 4 outputs (one per class) and softmax, which turns them into probabilities.
+* **Baseline CNN** (Section 3.4): one convolution with 32 filters, then four blocks of convolution, max pooling and
+  dropout 0.2, then dense layers and softmax. The paper does not give the filters of the four blocks or the size of the
+  dense layer, so I used 32, 64, 128, 128 filters and 256 units.
+* **Pre-trained networks**: the ImageNet model without its top, plus the top layers the paper describes.
+* The last layer always has 4 outputs with softmax, one probability per class.
 """))
     cells.append(("code", '''
 def build_baseline():
@@ -386,7 +381,7 @@ def build_transfer(name):
            "MobileNetV2": keras.applications.MobileNetV2, "Xception": keras.applications.Xception}[name]
     base = app(include_top=False, weights="imagenet", input_shape=(size, size, 3))
     inp = keras.Input((size, size, 3))
-    x = base(inp)                      # no 'training' flag: BatchNorm follows each layer's trainable setting
+    x = base(inp)                      # no training= flag, so BatchNorm follows each layer's trainable setting
     if name == "VGG16":
         x = layers.Flatten()(x)
         x = layers.Dense(4096, activation="relu")(x)
@@ -395,42 +390,41 @@ def build_transfer(name):
     elif name == "InceptionV3":
         x = layers.GlobalAveragePooling2D()(x)
         x = layers.Dense(1024, activation="relu")(x)
-    else:                              # MobileNetV2 and Xception
+    else:                              # MobileNetV2, Xception
         x = layers.GlobalAveragePooling2D()(x)
         x = layers.Dropout(0.2)(x)
     out = layers.Dense(4, activation="softmax", dtype="float32")(x)
     return keras.Model(inp, out), base
 
 def set_stage(name, base, stage):
-    """Stage 1: base frozen. Stage 2: unfreeze the paper's layers. Stage 3: as 2 but BatchNorm stays frozen."""
+    """1: base frozen. 2: unfreeze the layers the paper names. 3: like 2 with BatchNorm kept frozen."""
     if stage == 1:
         base.trainable = False
         return
     base.trainable = True
     names = [l.name for l in base.layers]
     if name == "VGG16":
-        first = len(base.layers) - 2                     # last two layers
+        first = len(base.layers) - 2
     elif name == "InceptionV3":
-        first = names.index("mixed8") + 1                 # everything after mixed8
+        first = names.index("mixed8") + 1
     elif name == "Xception":
-        first = len(base.layers) - 132                    # "132 layers" = all of Keras' Xception
+        first = len(base.layers) - 132                    # = 0, all of Keras' Xception
     else:
-        first = 0                                         # MobileNetV2: the whole network
+        first = 0                                         # MobileNetV2
     for i, l in enumerate(base.layers):
         l.trainable = i >= max(first, 0)
         if stage == 3 and isinstance(l, layers.BatchNormalization):
-            l.trainable = False                           # Keras then also runs it in inference mode
+            l.trainable = False                           # in Keras 3 this also puts it in inference mode
 '''))
 
     cells.append(("md", """
-## 8. Training and testing functions
+## 8. Training and scoring
 
-* **Loss**: sparse categorical cross-entropy (the standard loss for one-label, many-class problems).
-* **Early stopping**: watches the validation loss; keeps the weights of the best epoch.
-* **Testing**: we report accuracy with a 95% confidence interval (Wilson method), macro F1
-  (the plain average of the four class F1 scores, so the small NCD class counts as much as the others),
-  and precision, recall and F1 for each class, like the paper.
-* Every result is written to `results.csv` as soon as it is ready, so nothing is lost if the run stops later.
+* Loss: sparse categorical cross-entropy, the usual one for a single label out of several classes.
+* Early stopping watches the validation loss and restores the best epoch.
+* Scores: accuracy with a Wilson 95% interval, macro F1 (the plain mean of the four class F1 scores, so the small NCD
+  class counts as much as the others), and precision, recall and F1 per class, as in the paper.
+* Each result goes into `results.csv` as soon as it exists, so a crash later on loses nothing.
 """))
     cells.append(("code", '''
 def wilson(k, n, z=1.96):
@@ -463,7 +457,7 @@ def evaluate(model, name, stage, cfg, idx, tag="test"):
 
 def fit(model, name, stage, cfg, lr, epochs, tr, va, early_stop=True):
     batch = BATCH_XCEPTION_FINE if (name.endswith("Xception") and stage > 1) else BATCH
-    # jit_compile=False: no XLA compiler. XLA asked for one 7 GB block for Xception and crashed in our test run.
+    # no XLA: it asked for one 7 GB block for Xception and crashed the smoke test
     model.compile(optimizer=keras.optimizers.Adam(lr), loss="sparse_categorical_crossentropy", metrics=["accuracy"],
                   jit_compile=False)
     n_train = int(sum(np.prod(w.shape) for w in model.trainable_weights))
@@ -476,17 +470,15 @@ def fit(model, name, stage, cfg, lr, epochs, tr, va, early_stop=True):
 '''))
 
     cells.append(("md", """
-## 9. Run all five models
+## 9. Run the five models
 
-For each borrowed network: stage 1 (top only) → save weights → stage 2 (fine-tune) → test.
-Then go back to the stage-1 weights → stage 3 (fine-tune with frozen BatchNorm) → test.
-Stages 2 and 3 therefore start from the same point and get the same number of epochs, so they can be compared fairly.
-If one model crashes, the error is written down and the next model still runs.
-Xception runs first because it needs the most GPU memory; the result tables are put back in the paper's order at the end.
+For each pre-trained network: stage 1, save the weights, stage 2, test. Then reload the stage 1 weights, stage 3,
+test. Stages 2 and 3 start from the same point with the same number of epochs, so they can be compared fairly.
+If a model crashes, the error is logged and the next model still runs. Xception goes first because it needs the most
+GPU memory.
 """))
     cells.append(("code", '''
-# Run order: the biggest model (Xception at 299 px) first, while the GPU memory is still empty.
-RUN_ORDER = ["Xception", "InceptionV3", "VGG16", "MobileNetV2", "BaselineCNN"]
+RUN_ORDER = ["Xception", "InceptionV3", "VGG16", "MobileNetV2", "BaselineCNN"]   # biggest first, while memory is empty
 done = {(r["model"], r["stage"]) for r in rows if r["eval_set"] == "test"}
 for name in RUN_ORDER:
     cfg = MODELS[name]
@@ -511,7 +503,7 @@ for name in RUN_ORDER:
             fit(model, name, stage, cfg, LR_FINE, EPOCHS_STAGE, train_idx, val_idx)
             evaluate(model, name, stage, cfg, test_idx)
             if name == "MobileNetV2" and stage == 3:
-                model.save(f"{OUT}/model_{name}_stage3.keras")    # the paper's recommended model
+                model.save(f"{OUT}/model_{name}_stage3.keras")
     except Exception:
         traceback.print_exc()
         open(f"{OUT}/errors.txt", "a").write(f"{name}\\n{traceback.format_exc()}\\n")
@@ -521,21 +513,20 @@ for name in RUN_ORDER:
 
     if protocol == "leakfree":
         cells.append(("md", """
-## 10. Part C – Train on farm (eye) labels, test on lab (PCR) labels
+## 10. Part C: train on field labels, test on PCR labels
 
-* Training pool: the farm images of section 4's training pool (so the farm test set stays unseen).
-* Test set: PCR-labelled images whose group has **no** member in the training pool (no copies can leak).
-* Model: MobileNetV2 with the stage 1 → stage 3 recipe (the paper's recommended setup).
+* Training: the field images of the training pool from section 4, so the field test set stays unseen.
+* Test: every PCR image whose group has no member in that training data.
+* Model: MobileNetV2, stage 1 then stage 3.
 
-We also check the reverse direction on the same model: its accuracy on the leak-free farm test set from section 4.
-If the accuracy on PCR images is much lower than on farm images, the model has learned the **farm labelling habit**
-(colour and shape rules) more than the disease itself.
+The same model is also scored on the leak-free field test set. A big gap between the two scores would mean the model
+learned what decides a field label rather than what the laboratory finds.
 """))
         cells.append(("code", '''
-farm_keep = pool[df.loc[pool, "source"].values == "farm"]   # farm images of the training pool only
+farm_keep = pool[df.loc[pool, "source"].values == "farm"]   # field images of the training pool only
 lab_all = df.index[(df["source"] == "lab")].values
 lab_all = lab_all[~np.isin(lab_all, conflict)]
-lab_test = lab_all[~np.isin(GROUP[lab_all], GROUP[farm_keep])]         # lab images with no copy among farm images
+lab_test = lab_all[~np.isin(GROUP[lab_all], GROUP[farm_keep])]
 print("PCR test images:", len(lab_test), "| dropped because a farm copy exists:", len(lab_all) - len(lab_test))
 print(pd.crosstab(df.loc[lab_test, "label"], "PCR test images"))
 
@@ -560,12 +551,12 @@ finally:
 '''))
 
     cells.append(("md", """
-## Final · Our results next to the paper's Table 2
+## Results next to the paper's Table 2
 """))
     cells.append(("code", '''
 res = pd.read_csv(RESULTS_CSV)
 t = res[res["eval_set"] == "test"].pivot_table(index="model", columns="stage", values="accuracy")
-t = t.reindex([m for m in MODELS if m in t.index])          # paper's order
+t = t.reindex([m for m in MODELS if m in t.index])          # back to the paper's order
 t.columns = [f"ours_stage{c}" for c in t.columns]
 for s in (1, 2, 3):
     t[f"paper_stage{s}"] = [PAPER.get(m, {}).get("acc", [None]*3)[s-1] for m in t.index]
@@ -577,7 +568,7 @@ print(res[["eval_set", "model", "stage", "n_test", "accuracy", "acc_ci_low", "ac
            "f1_cocci", "f1_healthy", "f1_ncd", "f1_salmo"]].to_string(index=False))
 '''))
     cells.append(("code", '''
-# Learning curves for the two models the paper discusses (MobileNetV2 and Xception, stage 3).
+# learning curves for the two models the paper talks about most
 fig, ax = plt.subplots(1, 2, figsize=(11, 4))
 for k, name in enumerate(["MobileNetV2", "Xception"]):
     p = f"{OUT}/history_{name}_stage3.csv"
@@ -591,13 +582,14 @@ plt.tight_layout(); plt.savefig(f"{OUT}/curves_stage3.png", dpi=130); plt.show()
     return cells
 
 
-for protocol, smoke, folder, slug, nbname in [
-    ("paper", False, "02_paper_replication", "poultry-feces-02-paper-replication", "02_paper_replication.ipynb"),
-    ("leakfree", False, "03_leak_free", "poultry-feces-03-leak-free", "03_leak_free.ipynb"),
-    ("leakfree", True, "smoke_test", "poultry-feces-smoke-test", "smoke_test.ipynb"),
+for protocol, smoke, folder, slug, title, nbname in [
+    ("paper", False, "02_paper_replication", "poultry-feces-02-paper-replication", "Poultry Feces 02: Paper Replication",
+     "02_paper_replication.ipynb"),
+    ("leakfree", False, "03_leak_free", "poultry-feces-03-leak-free", "Poultry Feces 03: Leak-Free", "03_leak_free.ipynb"),
+    ("leakfree", True, "smoke_test", "poultry-feces-smoke-test", "Poultry Feces Smoke Test", "smoke_test.ipynb"),
 ]:
     out = os.path.join(ROOT, folder)
     os.makedirs(out, exist_ok=True)
     make_notebook(cells_for(protocol, smoke), os.path.join(out, nbname))
-    write_metadata(out, slug, slug, nbname, gpu=True, datasets=[DATASET])
+    write_metadata(out, slug, title, nbname, gpu=True, datasets=[DATASET], private=smoke)
     print("built", folder)
