@@ -119,6 +119,9 @@ def fig_summary():
     bars = ax.barh(y, [v for _, v, _ in items], color=[c for _, _, c in items], height=0.66)
     bar_labels(ax, bars, suffix="%", horizontal=True, pad=0.4, size=14.4)
     ax.set_yticks(y, [n for n, _, _ in items], fontsize=14.4)
+    drop = items[2][1] - items[3][1]
+    ax.text(82, y[3], f"{rnd(drop, 0)} points lower when the\nanswer key is the lab", fontsize=12,
+            fontweight="bold", color=ORANGE, va="center", ha="left")
     ax.set_xlim(50, 102)
     ax.set_xlabel("Test accuracy, MobileNetV2 (%)")
     ax.tick_params(axis="y", length=0)
@@ -175,34 +178,129 @@ def fig_per_class_f1():
     save(fig, "per_class_f1.png")
 
 
+def confusion_panel(ax, cm, heading, ylabel=True):
+    """One confusion grid: green shades on the diagonal (right), red shades off it (wrong), row percentages."""
+    cm = np.asarray(cm, float)
+    share = 100 * cm / cm.sum(1, keepdims=True)
+    greens, reds = plt.get_cmap("Greens"), plt.get_cmap("Reds")
+    for i in range(4):
+        for j in range(4):
+            v = share[i, j]
+            colour = greens(0.25 + 0.7 * v / 100) if i == j else reds(min(0.08 + v / 45, 0.85))
+            ax.add_patch(plt.Rectangle((j - 0.5, i - 0.5), 1, 1, facecolor=colour, edgecolor="white", lw=3))
+            dark = (i == j and v > 45) or (i != j and v > 22)
+            ax.text(j, i - 0.1, f"{rnd(v, 0)}%", ha="center", va="center", fontsize=16 if i == j else 13,
+                    fontweight="bold", color="white" if dark else INK)
+            ax.text(j, i + 0.25, f"{int(cm[i, j])}", ha="center", va="center", fontsize=10.5,
+                    color="white" if dark else "#555555")
+    ax.set_xlim(-0.5, 3.5); ax.set_ylim(3.5, -0.5)
+    short = ["Cocci", "Healthy", "Newcastle", "Salmo"]
+    ax.set_xticks(range(4), short, fontsize=12.5)
+    ax.set_yticks(range(4), short if ylabel else [""] * 4, fontsize=12.5)
+    ax.tick_params(length=0)
+    ax.xaxis.set_label_position("top"); ax.xaxis.tick_top()
+    ax.set_xlabel("The model said", fontsize=13, labelpad=8)
+    if ylabel:
+        ax.set_ylabel("The answer key says", fontsize=13)
+    for s in ax.spines.values():
+        s.set_visible(False)
+    ax.set_title(heading, fontsize=14.5, fontweight="bold", pad=44, color=INK)
+
+
+def confusion_figure(cm_left, cm_right, head_left, head_right, main, sub, name):
+    fig, ax = plt.subplots(1, 2, figsize=(11, 6.2))
+    confusion_panel(ax[0], cm_left, head_left)
+    confusion_panel(ax[1], cm_right, head_right, ylabel=False)
+    title(fig, main, sub)
+    fig.text(0.01, 0.0, "Each row adds up to 100%: of all photos with that answer, the share the model put in each box. "
+             "Small numbers: photos.", fontsize=11.5, color="#555555")
+    fig.tight_layout(rect=(0, 0.03, 1, 0.86))
+    save(fig, name)
+
+
 def fig_field_vs_pcr():
     """One model trained on field photos, scored against field labels and against PCR labels (notebook 03, part C)."""
-    field, field_all = recall_from_cm(f"{RES}/03_leak_free/cm_farm_test_C_farm_only_MobileNetV2_stage3.csv")
-    pcr, pcr_all = recall_from_cm(f"{RES}/03_leak_free/cm_pcr_test_C_farm_only_MobileNetV2_stage3.csv")
-    fig, ax = plt.subplots(figsize=(8.6, 4.4))
-    per_class_bars(ax, [(f"Field labels (all classes {rnd(field_all)}%)", GREEN, field),
-                        (f"Lab (PCR) labels (all classes {rnd(pcr_all)}%)", ORANGE, pcr)])
-    ax.set_ylabel("Cases found (recall, %)")
-    legend_below(ax, 2, y=-0.21)
-    title(fig, "Trained on field photos only, it matches the lab 7 times in 10",
-          "MobileNetV2 trained on field photos, then scored against two answer keys.")
-    fig.tight_layout(rect=(0, 0, 1, top(True)))
-    save(fig, "field_vs_pcr.png")
+    a = pd.read_csv(f"{RES}/03_leak_free/cm_farm_test_C_farm_only_MobileNetV2_stage3.csv", index_col=0).values
+    b = pd.read_csv(f"{RES}/03_leak_free/cm_pcr_test_C_farm_only_MobileNetV2_stage3.csv", index_col=0).values
+    acc = lambda m: rnd(100 * np.trace(m) / m.sum())
+    confusion_figure(a, b, f"Against field labels: {acc(a)}% right", f"Against the lab (PCR): {acc(b)}% right",
+                     "Trained on field photos only, it matches the lab 7 times in 10",
+                     "The same MobileNetV2, two answer keys. Green: right. Red: wrong. "
+                     "Most PCR-confirmed Newcastle cases are called something else.", "field_vs_pcr.png")
 
 
 def fig_per_class_second_run():
-    """Notebook 04, corrected recipe: recall per class on unseen field and PCR photos, mean of 5 folds."""
+    """Notebook 04, corrected recipe: every clean photo predicted once by the fold model that never saw it."""
+    a = pd.read_csv(f"{RES}/04_stability_and_recipe/oof_cm_corrected_farm.csv", index_col=0).values
+    b = pd.read_csv(f"{RES}/04_stability_and_recipe/oof_cm_corrected_pcr.csv", index_col=0).values
+    acc = lambda m: rnd(100 * np.trace(m) / m.sum())
+    confusion_figure(a, b, f"Field photos: {acc(a)}% right", f"Lab (PCR) photos: {acc(b)}% right",
+                     "With lab photos in training the gap shrinks, but stays",
+                     "MobileNetV2 trained on both photo sets, as in the paper. All 5 folds pooled: every photo predicted "
+                     "once, by a model that never saw it.", "per_class_second_run.png")
+
+
+def fig_scorecard():
+    """Every model on every disease in one coloured grid: overall accuracy and the share of each class found."""
+    rp, rl = results("02_paper_split"), results("03_leak_free")
     s4 = pd.read_csv(f"{RES}/04_stability_and_recipe/summary.csv").set_index(["recipe", "test_set"])
-    f, p = s4.loc[("corrected", "farm")], s4.loc[("corrected", "pcr")]
-    fig, ax = plt.subplots(figsize=(8.6, 4.4))
-    per_class_bars(ax, [(f"Field photos (all classes {rnd(f['accuracy'])}%)", GREEN, [f[f"recall_{s}"] for s in SHORT]),
-                        (f"Lab (PCR) photos (all classes {rnd(p['accuracy'])}%)", ORANGE, [p[f"recall_{s}"] for s in SHORT])])
-    ax.set_ylabel("Cases found (recall, %)")
-    legend_below(ax, 2, y=-0.21)
-    title(fig, "With lab photos in training the gap shrinks, but stays",
-          "MobileNetV2 trained on field and PCR photos together, as in the paper. Mean of 5 folds.")
-    fig.tight_layout(rect=(0, 0, 1, top(True)))
-    save(fig, "per_class_second_run.png")
+    sc = pd.read_csv(f"{RES}/05_shortcuts_and_labels/scores.csv").groupby("test").mean(numeric_only=True)
+
+    def from_results(r):
+        return [r["accuracy"]] + [100 * r[f"recall_{s}"] for s in SHORT]
+
+    def from_s4(test_set):
+        r = s4.loc[("corrected", test_set)]
+        return [r["accuracy"]] + [r[f"recall_{s}"] for s in SHORT]
+
+    def from_scores(test):
+        r = sc.loc[test]
+        return [100 * r["accuracy"]] + [100 * r[f"recall_{s}"] for s in SHORT]
+
+    rows = [  # (group, label, values, colour of the group tag)
+        ("Paper's set-up", "Paper reports (Table 2)", [PAPER_ACC["MobileNetV2"]] + [np.nan] * 4, NAVY),
+        ("Paper's set-up", "Our rebuild, paper's split", from_results(row(rp, "MobileNetV2", 3)), BLUE),
+        ("Copies kept apart", "Field labels", from_results(row(rl, "MobileNetV2", 3)), GREEN),
+        ("Trained on field\nphotos only", "Field labels", from_results(row(rl, "C_farm_only_MobileNetV2", 3, "farm_test")), GREEN),
+        ("Trained on field\nphotos only", "Lab (PCR) labels", from_results(row(rl, "C_farm_only_MobileNetV2", 3, "pcr_test")), ORANGE),
+        ("Both photo sets,\n5 folds", "Field labels", from_s4("farm"), GREEN),
+        ("Both photo sets,\n5 folds", "Lab (PCR) labels", from_s4("pcr"), ORANGE),
+        ("Shortcut tests,\n5 folds", "Floor only", from_scores("H2_floor_only"), GREY),
+        ("Shortcut tests,\n5 folds", "Colour only, field", from_scores("H5_colour_farm"), GREY),
+        ("Shortcut tests,\n5 folds", "Colour only, PCR", from_scores("H5_colour_pcr"), GREY),
+    ]
+    cols = ["All photos", "Coccidiosis", "Healthy", "Newcastle\ndisease", "Salmonella"]
+    cmap = plt.get_cmap("RdYlGn")
+    fig, ax = plt.subplots(figsize=(11, 7.4))
+    for i, (_, label, vals, colour) in enumerate(rows):
+        for j, v in enumerate(vals):
+            x = j * 1.0 + (0.25 if j else 0)          # a small gap after the overall column
+            if np.isnan(v):
+                ax.add_patch(plt.Rectangle((x, i), 1, 1, facecolor="#eeeeee", edgecolor="white", lw=3))
+                ax.text(x + 0.5, i + 0.5, "not given", ha="center", va="center", fontsize=10.5, color="#888888")
+                continue
+            ax.add_patch(plt.Rectangle((x, i), 1, 1, facecolor=cmap(np.clip((v - 40) / 60, 0, 1)), edgecolor="white", lw=3))
+            ax.text(x + 0.5, i + 0.5, rnd(v, 0), ha="center", va="center", fontsize=15,
+                    fontweight="bold", color="white" if v < 55 else INK)
+        ax.add_patch(plt.Rectangle((-0.22, i + 0.15), 0.12, 0.7, facecolor=colour))
+        ax.text(-0.32, i + 0.5, label, ha="right", va="center", fontsize=12.5)
+    # group names, with a thin line between groups
+    groups = [r[0] for r in rows]
+    for g in dict.fromkeys(groups):
+        idx = [k for k, x in enumerate(groups) if x == g]
+        ax.text(-3.45, (idx[0] + idx[-1] + 1) / 2, g, ha="left", va="center", fontsize=12.5, fontweight="bold", color=INK)
+        if idx[0] > 0:
+            ax.plot([-3.45, 5.25], [idx[0], idx[0]], color="#bbbbbb", lw=1, clip_on=False)
+    for j, c in enumerate(cols):
+        ax.text(j + (0.25 if j else 0) + 0.5, -0.15, c, ha="center", va="bottom", fontsize=13, fontweight="bold")
+    ax.text(3.25, -0.95, "Share of each disease found (recall, %)", ha="center", fontsize=12, color="#555555")
+    ax.text(0.5, -0.95, "Accuracy (%)", ha="center", fontsize=12, color="#555555")
+    ax.set_xlim(-3.5, 5.3); ax.set_ylim(len(rows), -1.2)
+    ax.axis("off")
+    title(fig, "Scorecard: every test, every disease",
+          "MobileNetV2 throughout. Green is good, red is poor. The weak spot is always Newcastle disease and the lab labels.")
+    fig.tight_layout(rect=(0, 0, 1, 0.9))
+    save(fig, "scorecard.png")
 
 
 def fig_second_run():
@@ -218,7 +316,7 @@ def fig_second_run():
         ("Floor only,\ndropping hidden", pick(s5.loc["H2_floor_only"]), nan),
         ("Colour only,\nno deep learning", pick(s5.loc["H5_colour_farm"]), pick(s5.loc["H5_colour_pcr"])),
     ]
-    fig, ax = plt.subplots(figsize=(8.6, 5.6))
+    fig, ax = plt.subplots(figsize=(9.6, 5.8))
     y = np.arange(len(rows))[::-1] * 1.0
     h = 0.36
     for k, (name, colour) in enumerate([("Field labels", GREEN), ("Lab (PCR) labels", ORANGE)]):
@@ -233,12 +331,20 @@ def fig_second_run():
                 ax.text(lo - 0.6, b.get_y() + b.get_height() / 2, rnd(m), va="center", ha="right",
                         fontsize=13.2, fontweight="bold", color="white", zorder=4)
     ax.text(50.6, y[3] - h / 2, "not tested", va="center", fontsize=12, color="#666666", style="italic")
+    for yi, r in zip(y, rows):                  # the field-minus-PCR gap, in a badge at the right
+        if not np.isnan(r[2][0]):
+            ax.text(106.5, yi, f"gap\n{rnd(r[1][0] - r[2][0])}", ha="center", va="center", fontsize=12,
+                    fontweight="bold", color="white", linespacing=1.1,
+                    bbox=dict(boxstyle="round,pad=0.35", facecolor=ORANGE, edgecolor="none"))
+    ax.text(106.5, 1.01, "field\nminus PCR", transform=ax.get_xaxis_transform(), ha="center", va="bottom",
+            fontsize=11, color="#555555")
     ax.axvline(PAPER_ACC["MobileNetV2"], color=NAVY, lw=1.6, ls="--", zorder=1)
-    ax.text(PAPER_ACC["MobileNetV2"], 1.01, "paper: 98.0", transform=ax.get_xaxis_transform(), color=NAVY,
-            ha="center", va="bottom", fontsize=12.6, fontweight="bold")
+    ax.text(PAPER_ACC["MobileNetV2"] + 0.3, 1.01, "paper: 98.0", transform=ax.get_xaxis_transform(), color=NAVY,
+            ha="right", va="bottom", fontsize=12.6, fontweight="bold")
     ax.set_yticks(y, [r[0] for r in rows], fontsize=13.8)
     ax.tick_params(axis="y", length=0)
-    ax.set_xlim(50, 104)
+    ax.set_xlim(50, 110)
+    ax.set_xticks(range(50, 101, 10))
     ax.set_ylim(y[-1] - 0.6, y[0] + 0.6)
     ax.set_xlabel("Test accuracy (%), mean of 5 folds with 95% interval")
     legend_below(ax, 2, y=-0.13)
@@ -374,6 +480,7 @@ if __name__ == "__main__":
     fig_field_vs_pcr()
     fig_per_class_second_run()
     fig_second_run()
+    fig_scorecard()
     if args.images:
         print("photo figures")
         fig_class_examples(args.images)

@@ -119,6 +119,12 @@ Accuracy in %, mean of 5 folds (95% interval in brackets). Balanced accuracy and
 
 ![Per class, second run](figures/per_class_second_run.png)
 
+## Scorecard
+
+Every test, disease by disease. Green is good, red is poor.
+
+![Scorecard](figures/scorecard.png)
+
 ## What this means
 
 1. The paper can be reproduced. The code was not the problem.
